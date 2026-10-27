@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Highway Racer 3D — Prototype</title>
+<style>
+  :root { --yellow:#ffd43b; --panel:rgba(8,16,28,.82); --white:#f8fafc; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; width:100%; height:100%; overflow:hidden; background:#87ceeb; font-family:system-ui,Arial,sans-serif; color:var(--white); touch-action:none; }
+  #game { position:fixed; inset:0; }
+  canvas { display:block; }
+  .hud { position:fixed; z-index:5; background:var(--panel); border:1px solid #ffffff33; border-radius:12px; padding:9px 12px; backdrop-filter:blur(6px); }
+  #brand { top:10px; left:10px; font-weight:900; letter-spacing:.5px; color:var(--yellow); font-size:14px; }
+  #stats { top:10px; right:10px; text-align:right; min-width:112px; font-size:13px; line-height:1.6; }
+  #message { top:66px; left:50%; transform:translateX(-50%); white-space:nowrap; font-size:12px; padding:7px 10px; }
+  #camera { position:fixed; z-index:6; top:76px; right:10px; border:1px solid #ffffff55; border-radius:10px; padding:9px 11px; background:#10243bdf; color:white; font-weight:700; }
+  #garage { position:fixed; z-index:6; top:10px; left:50%; transform:translateX(-50%); display:flex; gap:5px; }
+  button { border:1px solid #ffffff55; border-radius:10px; color:#fff; background:#13263cde; padding:10px 12px; font-weight:800; font-size:13px; }
+  button.active { color:#111827; background:var(--yellow); border-color:#fff2a8; }
+  #gears { position:fixed; z-index:6; left:50%; transform:translateX(-50%); bottom:92px; display:flex; gap:5px; }
+  .gear { min-width:39px; min-height:42px; padding:7px 9px; }
+  #controls { position:fixed; z-index:6; left:0; right:0; bottom:12px; display:flex; justify-content:space-between; align-items:end; padding:0 14px; }
+  .steer { display:flex; gap:8px; }
+  .control { width:64px; height:62px; font-size:23px; background:#10243bd9; touch-action:none; }
+  .pedals { display:flex; gap:8px; align-items:end; }
+  .pedal { width:68px; height:72px; font-size:12px; }
+  #brake { background:#8e2229e8; }
+  #gas { background:#176b3ce8; }
+  #hint { position:fixed; z-index:5; bottom:170px; left:50%; transform:translateX(-50%); color:white; background:#08101cb8; padding:6px 10px; border-radius:9px; font-size:11px; white-space:nowrap; }
+  @media (max-width:600px) {
+    #garage { top:52px; }
+    #message { top:99px; }
+    #camera { top:99px; }
+    #gears { bottom:91px; }
+    .gear { min-width:34px; padding:7px 6px; }
+    #hint { bottom:164px; }
+    #stats { font-size:12px; }
+  }
+</style>
+</head>
+<body>
+<div id="game"></div>
+<div id="brand" class="hud">🏁 HIGHWAY RACER 3D</div>
+<div id="stats" class="hud">स्पीड: <b id="speed">0</b> km/h<br>गियर: <b id="gearRead">N</b><br>कार: <b id="carRead">SPORTS</b></div>
+<div id="garage">
+  <button id="sports" class="active">🏎️ SPORTS</button>
+  <button id="suv">🚙 SUV</button>
+</div>
+<div id="message" class="hud">Prototype • धीरे-धीरे टेस्ट करें</div>
+<button id="camera">📷 कैमरा: पीछे</button>
+<div id="hint">गियर चुनें • एक्सेलरेटर दबाएँ • बाएँ/दाएँ मोड़ें</div>
+<div id="gears">
+  <button class="gear" data-gear="R">R</button>
+  <button class="gear active" data-gear="N">N</button>
+  <button class="gear" data-gear="1">1</button>
+  <button class="gear" data-gear="2">2</button>
+  <button class="gear" data-gear="3">3</button>
+  <button class="gear" data-gear="4">4</button>
+  <button class="gear" data-gear="5">5</button>
+  <button class="gear" data-gear="6">6</button>
+</div>
+<div id="controls">
+  <div class="steer">
+    <button class="control" id="left">◀</button>
+    <button class="control" id="right">▶</button>
+  </div>
+  <div class="pedals">
+    <button class="pedal" id="brake">BRAKE<br>🛑</button>
+    <button class="pedal" id="gas">ACCEL<br>🟢</button>
+  </div>
+</div>
+<script type="module">
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+const root = document.getElementById('game');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87c9f4);
+scene.fog = new THREE.Fog(0x87c9f4, 55, 240);
+const camera = new THREE.PerspectiveCamera(65, innerWidth/innerHeight, 0.1, 600);
+const renderer = new THREE.WebGLRenderer({antialias:true, powerPreference:'high-performance'});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 1.7));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+root.appendChild(renderer.domElement);
+
+scene.add(new THREE.HemisphereLight(0xd9f1ff, 0x52633d, 2.0));
+const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+sun.position.set(-15, 28, 15); sun.castShadow = true; scene.add(sun);
+
+const mat = (color, roughness=.8, metalness=0) => new THREE.MeshStandardMaterial({color,roughness,metalness});
+const grassMat=mat(0x4d8a42), roadMat=mat(0x343a42), lineMat=mat(0xf6f3d7), darkMat=mat(0x151a20), tireMat=mat(0x111318), glassMat=new THREE.MeshStandardMaterial({color:0x9bd8ef,metalness:.2,roughness:.22});
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(700,700), grassMat);
+ground.rotation.x=-Math.PI/2; ground.position.y=-.13; ground.receiveShadow=true; scene.add(ground);
+const road = new THREE.Mesh(new THREE.PlaneGeometry(14,600), roadMat);
+road.rotation.x=-Math.PI/2; road.position.set(0,-.08,-190); road.receiveShadow=true; scene.add(road);
+for (const x of [-7.1,7.1]) {
+  const edge = new THREE.Mesh(new THREE.BoxGeometry(.16,.025,600), lineMat);
+  edge.position.set(x,-.045,-190); scene.add(edge);
+}
+const dashes=[];
+for(let z=90; z>-490; z-=12){
+  const dash=new THREE.Mesh(new THREE.BoxGeometry(.16,.025,5),lineMat);
+  dash.position.set(0,-.04,z); scene.add(dash); dashes.push(dash);
+}
+// roadside trees and simple hills/buildings
+for(let i=0;i<100;i++){
+  const z=90-Math.random()*560;
+  for(const side of [-1,1]){
+    const x=side*(10+Math.random()*18);
+    const trunk=new THREE.Mesh(new THREE.CylinderGeometry(.16,.24,1.8,6),mat(0x6a4328));
+    trunk.position.set(x,.8,z); scene.add(trunk);
+    const crown=new THREE.Mesh(new THREE.ConeGeometry(1.2+Math.random(),2.5+Math.random(),7),mat([0x2c6e3b,0x347c42,0x477d38][Math.floor(Math.random()*3)]));
+    crown.position.set(x,2.8,z); scene.add(crown);
+  }
+}
+for(let i=0;i<26;i++){
+  const z=-30-i*18;
+  const h=5+Math.random()*19, w=4+Math.random()*7;
+  const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,w),mat([0x9bb2c5,0xc3b9a7,0x788e9f][i%3]));
+  b.position.set((i%2?1:-1)*(24+Math.random()*18),h/2,z); scene.add(b);
+  const roof=new THREE.Mesh(new THREE.BoxGeometry(w*.8,.2,w*.8),mat(0x485866)); roof.position.set(b.position.x,h+.1,z); scene.add(roof);
+}
+
+function makeCar(type='sports', color=0xe31b32) {
+  const group=new THREE.Group();
+  const isSUV=type==='suv';
+  const bodyMat=mat(color,.32,.35);
+  const body=new THREE.Mesh(new THREE.BoxGeometry(isSUV?1.9:1.85,isSUV?1.05:.62,isSUV?3.5:3.7),bodyMat);
+  body.position.y=isSUV?.92:.72; body.castShadow=true; group.add(body);
+  const hood=new THREE.Mesh(new THREE.BoxGeometry(isSUV?1.82:.1+1.7,.18,1.05),bodyMat);
+  hood.position.set(0,isSUV?1.35:1.02,-1.05); group.add(hood);
+  const cabin=new THREE.Mesh(new THREE.BoxGeometry(isSUV?1.55:1.35,isSUV?1.0:.72,isSUV?1.55:1.6),glassMat);
+  cabin.position.set(0,isSUV?1.82:1.3,.18); cabin.castShadow=true; group.add(cabin);
+  const roof=new THREE.Mesh(new THREE.BoxGeometry(isSUV?1.55:1.22,.12,isSUV?1.45:1.15),bodyMat);
+  roof.position.set(0,isSUV?2.35:1.67,.2); group.add(roof);
+  for(const x of [-.96,.96]) for(const z of [-1.15,1.15]){
+    const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.39,.39,.25,16),tireMat);
+    wheel.rotation.z=Math.PI/2; wheel.position.set(x,.42,z); wheel.castShadow=true; group.add(wheel);
+    const hub=new THREE.Mesh(new THREE.CylinderGeometry(.18,.18,.26,12),mat(0xb9c4ce,.35,.7));
+    hub.rotation.z=Math.PI/2; hub.position.set(x*1.01,.42,z); group.add(hub);
+  }
+  const lightMat=new THREE.MeshStandardMaterial({color:0xffeeee,emissive:0xff3030,emissiveIntensity:.8});
+  for(const x of [-.58,.58]){
+    const light=new THREE.Mesh(new THREE.BoxGeometry(.36,.15,.06),lightMat);
+    light.position.set(x,isSUV?1.05:.77,1.88); group.add(light);
+  }
+  // front bumper / grill
+  const bumper=new THREE.Mesh(new THREE.BoxGeometry(1.4,.18,.12),darkMat); bumper.position.set(0,isSUV?.55:.48,-1.9); group.add(bumper);
+  group.userData.type=type;
+  return group;
+}
+let car=makeCar('sports',0xe21b32); scene.add(car); car.position.set(0,0,4);
+const traffic=[];
+for(let i=0;i<8;i++){
+  const t=makeCar(i%3===0?'suv':'sports',[0x1673db,0xf1b928,0x20252b,0xe6e6e6][i%4]);
+  t.scale.setScalar(.82); t.position.set([-4.3,-1.5,1.6,4.4][i%4],0,-28-i*48); scene.add(t); traffic.push(t);
+}
+let selectedGear='N', speed=0, steer=0, cameraMode=0, gas=false, braking=false, left=false, right=false;
+const maxSpeeds={'R':18,'N':0,'1':38,'2':65,'3':95,'4':125,'5':155,'6':190};
+function setGear(g){
+  if(Math.abs(speed)>8 && (g==='R'||g==='N')) {
+    document.getElementById('message').textContent='पहले स्पीड कम करें, फिर R या N चुनें';
+    return;
+  }
+  selectedGear=g;
+  document.querySelectorAll('.gear').forEach(b=>b.classList.toggle('active',b.dataset.gear===g));
+  document.getElementById('gearRead').textContent=g;
+  document.getElementById('message').textContent=g==='R'?'Reverse चुना गया':g==='N'?'Neutral चुना गया':`Gear ${g} चुना गया`;
+}
+document.querySelectorAll('.gear').forEach(b=>b.addEventListener('click',()=>setGear(b.dataset.gear)));
+function hold(id, setter){
+ const el=document.getElementById(id);
+ const on=e=>{e.preventDefault();setter(true);};
+ const off=e=>{e.preventDefault();setter(false);};
+ el.addEventListener('pointerdown',on); ['pointerup','pointercancel','pointerleave'].forEach(ev=>el.addEventListener(ev,off));
+}
+hold('gas',v=>gas=v); hold('brake',v=>braking=v); hold('left',v=>left=v); hold('right',v=>right=v);
+document.getElementById('camera').addEventListener('click',()=>{
+ cameraMode=(cameraMode+1)%2;
+ document.getElementById('camera').textContent=cameraMode?'📷 कैमरा: ड्राइवर':'📷 कैमरा: पीछे';
+});
+function chooseCar(type){
+ const pos=car.position.clone(); scene.remove(car);
+ car=makeCar(type,type==='suv'?0x176fe5:0xe21b32); car.position.copy(pos); scene.add(car);
+ document.getElementById('carRead').textContent=type.toUpperCase();
+ document.getElementById('sports').classList.toggle('active',type==='sports');
+ document.getElementById('suv').classList.toggle('active',type==='suv');
+}
+document.getElementById('sports').onclick=()=>chooseCar('sports');
+document.getElementById('suv').onclick=()=>chooseCar('suv');
+
+let prev=performance.now();
+function animate(now){
+ requestAnimationFrame(animate);
+ const dt=Math.min((now-prev)/1000,.04); prev=now;
+ const target=maxSpeeds[selectedGear]||0;
+ if(gas && target>0) speed += (target/3.5)*dt;
+ else speed -= (selectedGear==='N'?30:10)*dt;
+ if(braking) speed-=65*dt;
+ speed=THREE.MathUtils.clamp(speed,-maxSpeeds.R,190);
+ if(selectedGear==='R' && gas) speed=Math.min(speed,0);
+ if(selectedGear!=='R' && speed<0) speed=0;
+ const moving=speed/3.6;
+ const direction=selectedGear==='R'?-1:1;
+ if(left) steer=THREE.MathUtils.clamp(steer+dt*2.5,-1,1);
+ else if(right) steer=THREE.MathUtils.clamp(steer-dt*2.5,-1,1);
+ else steer*=Math.max(0,1-dt*2.4);
+ car.position.x=THREE.MathUtils.clamp(car.position.x+steer*Math.max(.5,Math.abs(moving))*.55*dt,-5.2,5.2);
+ car.position.z += moving*direction*dt;
+ car.rotation.y=THREE.MathUtils.lerp(car.rotation.y,-steer*.16,.08);
+ // loop the road scenery so it feels endless
+ for(const d of dashes){ d.position.z+=moving*direction*dt; if(d.position.z>100)d.position.z-=588; if(d.position.z<-500)d.position.z+=588; }
+ for(const t of traffic){
+   t.position.z+=moving*direction*dt;
+   if(t.position.z>20) { t.position.z=-360-Math.random()*120; t.position.x=[-4.3,-1.5,1.6,4.4][Math.floor(Math.random()*4)]; }
+   if(Math.abs(t.position.z-car.position.z)<2.7 && Math.abs(t.position.x-car.position.x)<1.8 && Math.abs(speed)>10){
+     speed*=.96;
+     document.getElementById('message').textContent='टक्कर! गाड़ी संभालकर चलाएँ';
+   }
+ }
+ if(cameraMode===0){
+   const desired=new THREE.Vector3(car.position.x,car.position.y+5.0,car.position.z+10.5);
+   camera.position.lerp(desired,.12);
+   camera.lookAt(car.position.x,car.position.y+1,car.position.z-5);
+ } else {
+   const desired=new THREE.Vector3(car.position.x,car.position.y+1.55,car.position.z-0.15);
+   camera.position.lerp(desired,.2);
+   camera.lookAt(car.position.x,car.position.y+1.3,car.position.z-16);
+ }
+ document.getElementById('speed').textContent=Math.round(Math.abs(speed));
+ renderer.render(scene,camera);
+}
+requestAnimationFrame(animate);
+addEventListener('resize',()=>{camera.aspect=innerWidth/innerHeight;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);});
+</script>
+</body>
+</html>
